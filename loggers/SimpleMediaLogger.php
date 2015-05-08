@@ -29,6 +29,7 @@ class SimpleMediaLogger extends SimpleLogger
 			"labels" => array(
 				"search" => array(
 					"label" => _x("Media", "Media logger: search", "simple-history"),
+					"label_all" => _x("All media activity", "Media logger: search", "simple-history"),
 					"options" => array(
 						_x("Added media", "Media logger: search", "simple-history") => array(
 							"attachment_created"
@@ -338,7 +339,7 @@ class SimpleMediaLogger extends SimpleLogger
 	}
 
 	/**
-	 * Modify RSS links to they go directly to the correct media in wp admin
+	 * Modify RSS links so they go directly to the correct media in wp admin
 	 * 
 	 * @since 2.0.23
 	 * @param string $link

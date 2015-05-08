@@ -16,6 +16,73 @@ define("SIMPLE_HISTORY_LOG_DEBUG", true);
  * Some examples of filter usage and so on
  */
 
+
+/**
+ * Change capability required to manage the options page of simple history.
+ * Default capability is "manage_options"
+ */
+add_filter("simple_history/view_settings_capability", function($capability) {
+    
+    $capability = "manage_options";
+    return $capability;
+
+});
+
+
+/**
+ * Change capability required to view main simple history page.
+ * Default capability is "edit_pages". Change to for example "manage options" 
+ * to only allow admins to view the history log.
+ */
+add_filter("simple_history/view_history_capability", function($capability) {
+    
+    $capability = "manage_options";
+    return $capability;
+
+});
+
+
+// Skip adding things to the context table during logging. 
+// Useful if you don't want to add cool and possible super useful info to your logged events.
+// Also nice to have if you want to make sure your database does not grow.
+add_filter("simple_history/log_insert_context", function($context, $data) {
+
+	unset($context["_user_id"]);
+	unset($context["_user_login"]);
+	unset($context["_user_email"]);
+	unset($context["server_http_user_agent"]);
+
+	return $context;
+
+}, 10, 2);
+
+// Hide some columns from the detailed context view popup window
+add_filter("simple_history/log_html_output_details_table/row_keys_to_show", function($logRowKeysToShow, $oneLogRow) {
+	
+	$logRowKeysToShow["id"] = false;
+	$logRowKeysToShow["logger"] = false;
+	$logRowKeysToShow["level"] = false;
+	$logRowKeysToShow["message"] = false;
+
+	return $logRowKeysToShow;
+
+}, 10, 2);
+
+
+// Hide some more columns from the detailed context view popup window
+add_filter("simple_history/log_html_output_details_table/context_keys_to_show", function($logRowContextKeysToShow, $oneLogRow) {
+	
+	$logRowContextKeysToShow["plugin_slug"] = false;
+	$logRowContextKeysToShow["plugin_name"] = false;
+	$logRowContextKeysToShow["plugin_title"] = false;
+	$logRowContextKeysToShow["plugin_description"] = false;
+
+	return $logRowContextKeysToShow;
+
+}, 10, 2);
+
+
+
 // Allow only the users specified in $allowed_users to show the history page, the history widget on the dashboard, or the history settings page
 add_filter("simple_history/show_dashboard_page", "function_show_history_dashboard_or_page");
 add_filter("simple_history/show_dashboard_widget", "function_show_history_dashboard_or_page");
