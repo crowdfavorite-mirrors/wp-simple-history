@@ -10,7 +10,7 @@ class SimpleHistory {
 	const NAME = "Simple History";
 
 	// Dont use this any more! Will be removed in future versions. Use global SIMPLE_HISTORY_VERSION instead.
-	const VERSION = "2.0.30";
+	const VERSION = "2.1.1";
 
 	/**
 	 * For singleton
@@ -28,6 +28,11 @@ class SimpleHistory {
 	private $view_settings_capability;
 
 	/**
+	 * Array with external loggers to load
+	 */
+	private $externalLoggers;
+
+	/**
 	 * Array with all instantiated loggers
 	 */
 	private $instantiatedLoggers;
@@ -36,8 +41,6 @@ class SimpleHistory {
 	 * Array with all instantiated dropins
 	 */
 	private $instantiatedDropins;
-
-	public $pluginBasename;
 
 	/**
 	 * Bool if gettext filter function should be active
@@ -82,13 +85,13 @@ class SimpleHistory {
 		 */
 		do_action("simple_history/before_init", $this);
 
-		$this->setupVariables();
+		$this->setup_variables();
 
 		// Actions and filters, ordered by order specified in codex: http://codex.wordpress.org/Plugin_API/Action_Reference
 		add_action('after_setup_theme', array($this, 'load_plugin_textdomain'));
 		add_action('after_setup_theme', array($this, 'add_default_settings_tabs'));
-		add_action('after_setup_theme', array($this, 'loadLoggers'));
-		add_action('after_setup_theme', array($this, 'loadDropins'));
+		add_action('after_setup_theme', array($this, 'load_loggers'));
+		add_action('after_setup_theme', array($this, 'load_dropins'));
 
 		// Run before loading of loggers and before menu items are added
 		add_action('after_setup_theme', array($this, 'check_for_upgrade'), 5);
@@ -166,7 +169,7 @@ class SimpleHistory {
 	public static function get_instance() {
 
 		if ( ! isset( self::$instance ) ) {
-			
+
 			self::$instance = new SimpleHistory();
 
 		}
@@ -350,8 +353,8 @@ class SimpleHistory {
 			</script>
 
 			<script type="text/html" id="tmpl-simple-history-occasions-too-many">
-				<li 
-					class="SimpleHistoryLogitem 
+				<li
+					class="SimpleHistoryLogitem
 						   SimpleHistoryLogitem--occasion
 						   SimpleHistoryLogitem--occasion-tooMany
 						   ">
@@ -360,9 +363,9 @@ class SimpleHistory {
 						<div class="SimpleHistoryLogitem__text">
 							<?php _e('Sorry, but there are too many similar events to show.', "simple-history"); ?>
 							<!-- <br>occasionsCount: {{ data.occasionsCount }}
-							<br>occasionsCountMaxReturn: {{ data.occasionsCountMaxReturn }} 
-							<br>diff: {{ data.occasionsCount - data.occasionsCountMaxReturn }} 
-							Suggestions: 
+							<br>occasionsCountMaxReturn: {{ data.occasionsCountMaxReturn }}
+							<br>diff: {{ data.occasionsCount - data.occasionsCountMaxReturn }}
+							Suggestions:
 							<ul>
 								<li>- dig into database directly
 								<li>- Export
@@ -532,7 +535,11 @@ class SimpleHistory {
 	/**
 	 * Setup variables and things
 	 */
-	public function setupVariables() {
+	public function setup_variables() {
+
+		$this->externalLoggers = array();
+		$this->instantiatedLoggers = array();
+		$this->instantiatedDropins = array();
 
 		// Capability required to view history = for who will the History page be added
 		$this->view_history_capability = "edit_pages";
@@ -587,29 +594,49 @@ class SimpleHistory {
 	}
 
 	/**
+	 * Register an external logger so Simple History knows about it.
+	 * Does not load the logger, so file with logger must be loaded already.
+	 *
+	 * See example-logger.php for an example on how to use this.
+	 *
+	 * @since 2.1
+	 */
+	function register_logger($loggerClassName) {
+
+		$this->externalLoggers[] = $loggerClassName;
+
+	}
+
+	/**
 	 * Load built in loggers from all files in /loggers
 	 * and instantiates them
 	 */
-	public function loadLoggers() {
+	public function load_loggers() {
 
 		$loggersDir = SIMPLE_HISTORY_PATH . "loggers/";
 
-		/**
-		 * Filter the directory to load loggers from
-		 *
-		 * @since 2.0
-		 *
-		 * @param string $loggersDir Full directory path
-		 */
-		$loggersDir = apply_filters("simple_history/loggers_dir", $loggersDir);
+		$loggersFiles = array(
+			$loggersDir . "SimpleCommentsLogger.php",
+			$loggersDir . "SimpleCoreUpdatesLogger.php",
+			$loggersDir . "SimpleExportLogger.php",
+			$loggersDir . "SimpleLegacyLogger.php",
+			$loggersDir . "SimpleLogger.php",
+			$loggersDir . "SimpleMediaLogger.php",
+			$loggersDir . "SimpleMenuLogger.php",
+			$loggersDir . "SimpleOptionsLogger.php",
+			$loggersDir . "SimplePluginLogger.php",
+			$loggersDir . "SimplePostLogger.php",
+			$loggersDir . "SimpleThemeLogger.php",
+			$loggersDir . "SimpleUserLogger.php",
+	    );
 
-		$loggersFiles = glob($loggersDir . "*.php");
-
-		// SimpleLogger.php must be loaded first since the other loggers extend it
+		// SimpleLogger.php must be loaded first and always since the other loggers extend it
+		// Include it manually so risk of anyone using filters or similar disables it
 		include_once $loggersDir . "SimpleLogger.php";
 
 		/**
-		 * Filter the array with absolute paths to files as returned by glob function.
+		 * Filter the array with absolute paths to logger files to be loaded.
+		 *
 		 * Each file will be loaded and will be assumed to be a logger with a classname
 		 * the same as the filename.
 		 *
@@ -619,6 +646,8 @@ class SimpleHistory {
 		 */
 		$loggersFiles = apply_filters("simple_history/loggers_files", $loggersFiles);
 
+		// Array with slug of loggers to instantiate
+		// Slug of logger must also be the name of the logger class
 		$arrLoggersToInstantiate = array();
 
 		foreach ( $loggersFiles as $oneLoggerFile ) {
@@ -633,7 +662,7 @@ class SimpleHistory {
 			 * @since 2.0.22
 			 *
 			 * @param bool if to load the logger. return false to not load it.
-			 * @param srting slug of logger
+			 * @param string slug of logger
 			 */
 			$load_logger = apply_filters("simple_history/logger/load_logger", $load_logger, $basename_no_suffix );
 
@@ -648,14 +677,34 @@ class SimpleHistory {
 		}
 
 		/**
+		 * Action that plugins should use to add their custom loggers.
+		 * See register_logger() for more info.
+		 *
+		 * @since 2.1
+		 *
+		 * @param array $arrLoggersToInstantiate Array with class names
+		 */
+
+		do_action("simple_history/add_custom_logger", $this);
+
+		$arrLoggersToInstantiate = array_merge($arrLoggersToInstantiate, $this->externalLoggers);
+
+		/**
 		 * Filter the array with names of loggers to instantiate.
+		 *
+		 * Array
+		 * (
+    	 *	[0] => SimpleCommentsLogger
+    	 *	[1] => SimpleCoreUpdatesLogger
+   		 *	...
+   		 * )
 		 *
 		 * @since 2.0
 		 *
 		 * @param array $arrLoggersToInstantiate Array with class names
 		 */
 		$arrLoggersToInstantiate = apply_filters("simple_history/loggers_to_instantiate", $arrLoggersToInstantiate);
-		
+
 		// Instantiate each logger
 		foreach ($arrLoggersToInstantiate as $oneLoggerName) {
 
@@ -716,20 +765,21 @@ class SimpleHistory {
 	 * Load built in dropins from all files in /dropins
 	 * and instantiates them
 	 */
-	public function loadDropins() {
+	public function load_dropins() {
 
 		$dropinsDir = SIMPLE_HISTORY_PATH . "dropins/";
 
-		/**
-		 * Filter the directory to load loggers from
-		 *
-		 * @since 2.0
-		 *
-		 * @param string $dropinsDir Full directory path
-		 */
-		$dropinsDir = apply_filters("simple_history/dropins_dir", $dropinsDir);
-
-		$dropinsFiles = glob($dropinsDir . "*.php");
+		$dropinsFiles = array(
+			$dropinsDir . "SimpleHistoryDonateDropin.php",
+			$dropinsDir . "SimpleHistoryExportDropin.php",
+			$dropinsDir . "SimpleHistoryFilterDropin.php",
+			$dropinsDir . "SimpleHistoryIpInfoDropin.php",
+			$dropinsDir . "SimpleHistoryNewRowsNotifier.php",
+			$dropinsDir . "SimpleHistoryRSSDropin.php",
+			$dropinsDir . "SimpleHistorySettingsLogtestDropin.php",
+			$dropinsDir . "SimpleHistorySettingsStatsDropin.php",
+			$dropinsDir . "SimpleHistorySidebarDropin.php",
+		);
 
 		/**
 		 * Filter the array with absolute paths to files as returned by glob function.
@@ -744,7 +794,7 @@ class SimpleHistory {
 
 		$arrDropinsToInstantiate = array();
 
-		foreach ($dropinsFiles as $oneDropinFile) {
+		foreach ( $dropinsFiles as $oneDropinFile ) {
 
 			// path/path/simplehistory/dropins/SimpleHistoryDonateDropin.php => SimpleHistoryDonateDropin
 			$oneDropinFileBasename = basename($oneDropinFile, ".php");
@@ -864,7 +914,7 @@ class SimpleHistory {
 			 * @param bool Show the page or not
 			 */
 			$show_dashboard_widget = apply_filters("simple_history/show_dashboard_widget", true);
-			
+
 			if ( $show_dashboard_widget ) {
 				wp_add_dashboard_widget("simple_history_dashboard_widget", __("Simple History", 'simple-history'), array($this, "dashboard_widget_output"));
 			}
@@ -1331,7 +1381,7 @@ class SimpleHistory {
 			$show_dashboard_page = apply_filters("simple_history/show_dashboard_page", true);
 
 			if ( $show_dashboard_page ) {
-			
+
 				add_dashboard_page(
 					SimpleHistory::NAME,
 					_x("Simple History", 'dashboard menu name', 'simple-history'),
@@ -1347,7 +1397,7 @@ class SimpleHistory {
 		// Add a settings page
 		$show_settings_page = true;
 		$show_settings_page = apply_filters("simple_history_show_settings_page", $show_settings_page);
-		$show_settings_page = apply_filters("simple_history/show_settings_page", $show_settings_page);		
+		$show_settings_page = apply_filters("simple_history/show_settings_page", $show_settings_page);
 
 		if ( $show_settings_page ) {
 
@@ -1949,7 +1999,7 @@ class SimpleHistory {
 		$data_attrs .= sprintf(' data-level="%1$s" ', esc_attr( $oneLogRow->level ) );
 		$data_attrs .= sprintf(' data-date="%1$s" ', esc_attr( $oneLogRow->date ) );
 		$data_attrs .= sprintf(' data-initiator="%1$s" ', esc_attr( $oneLogRow->initiator ) );
-		
+
 		if ( isset( $oneLogRow->context["_user_id"] ) ) {
 			$data_attrs .= sprintf(' data-initiator-user-id="%1$d" ', $oneLogRow->context["_user_id"] );
 		}
@@ -2011,7 +2061,7 @@ class SimpleHistory {
 				// Only columns from oneLogRow that exist in logRowKeysToShow will be outputed
 				if ( ! array_key_exists($rowKey, $logRowKeysToShow) || ! $logRowKeysToShow[$rowKey] ) {
 					continue;
-				}				
+				}
 
 				// skip arrays and objects and such
 				if (is_array($rowVal) || is_object($rowVal)) {
@@ -2079,7 +2129,7 @@ class SimpleHistory {
 				// Only columns from context that exist in logRowContextKeysToShow will be outputed
 				if ( ! array_key_exists($contextKey, $logRowContextKeysToShow) || ! $logRowContextKeysToShow[$contextKey] ) {
 					continue;
-				}				
+				}
 
 				$more_details_html .= sprintf(
 					'<tr>
@@ -2462,7 +2512,7 @@ class SimpleHistory {
 			 * @param string            $alt         Alternative text to use in the avatar image tag.
 			 *                                       Default empty.
 			 */
-			$avatar = apply_filters( 'get_avatar', $avatar, $id_or_email, $size, $default, $alt );
+			$avatar = apply_filters( 'get_avatar', $avatar, $email, $size, $default, $alt );
 
 			return $avatar;
 
@@ -2739,7 +2789,7 @@ function simple_history_add($args) {
  *
  * @since 2.0.29
  *
- * 
+ *
  * Original description from wp_text_diff():
  *
  * Displays a human readable HTML representation of the difference between two strings.
@@ -2755,7 +2805,7 @@ function simple_history_add($args) {
  * 'title_left' : Default is an empty string. Change the HTML to the left of the
  *		title.
  * 'title_right' : Default is an empty string. Change the HTML to the right of
- *		the title. 
+ *		the title.
  *
  * @see wp_parse_args() Used to change defaults to user defined settings.
  * @uses Text_Diff
@@ -2767,10 +2817,10 @@ function simple_history_add($args) {
  * @return string Empty string if strings are equivalent or HTML with differences.
  */
 function simple_history_text_diff( $left_string, $right_string, $args = null ) {
-	
-	$defaults = array( 
-		'title' => '', 
-		'title_left' => '', 
+
+	$defaults = array(
+		'title' => '',
+		'title_left' => '',
 		'title_right' => '',
 		"leading_context_lines" => 1,
 		"trailing_context_lines" => 1
